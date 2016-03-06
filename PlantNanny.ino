@@ -1,7 +1,9 @@
-// Definitions
-byte statusPins[] = { 10,9,8,7,6,5,4,3,2 }; // From Dry to Wet
-byte pumpPin = A5;
+byte ledGreenPin = 10;
+byte ledRedPin = 11;
+
+byte pumpPin = 2;
 byte sensorPin = A0;
+
 byte switchLedPin = 13;
 byte switchPin = 12;
 
@@ -10,101 +12,121 @@ Defaults
 *****************************************/
 
 // Default watering mode (default: off)
-bool isWateringMode = true;
+bool isWateringMode = false;
 
 // How often to check the moisture
 int readDelay = 3000;
 // At what moisture level should we pump water (only if watering is enabled)
-int wateringThreshold = 100;
+int wateringThreshold = 800;
 
 // How many miliseconds to enable pump for
-int wateringLength = 1000;
+int wateringLength = 3000;
 
-// Variables
+
+/*****************************************
+Variables
+*****************************************/
 int currentMoisture = 0;
 
-void setup()
-{
-	// Set up all LEDs
-	for (size_t i = 0; i < sizeof(statusPins); i++)
-	{
-		pinMode(statusPins[i], OUTPUT);
-
-		// Test each pin
-		digitalWrite(statusPins[i], HIGH);
-		delay(70);
-		digitalWrite(statusPins[i], LOW);
+int ConvertToLinearRange(int min, int max, int current, bool isInverted = false, int maxNumber = 255) {
+	float y = ((float)maxNumber / (float)max) * (float)current + (float)min;
+	if (!isInverted) {
+		return (int)y;
 	}
+	return max - (int)y;
+}
 
-	// Sensor Pin
-	// Analog - no need to setup mode
+void ShowStatus(int readout) {
+	// Margins - dependable on mouisture sensor.
+	int from = 0;
+	int to = 1024;
+
+	byte red = (byte)ConvertToLinearRange(from, to, readout);
+	byte green = (byte)ConvertToLinearRange(from, to, readout, true);
+
+	Serial.print("G:");
+	Serial.print(green);
+	Serial.print(" R:");
+	Serial.print(red);
+	Serial.print(" V:");
+	Serial.println(readout);
+
+
+	analogWrite(ledGreenPin, green);
+	analogWrite(ledRedPin, red);
+
+	// This should be moved elsewhere
+	if (isWateringMode) {
+		digitalWrite(switchLedPin, HIGH);
+	}
+	else {
+		digitalWrite(switchLedPin, LOW);
+	}
+}
+
+// the setup routine runs once when you press reset:
+void setup() {
+	// initialize the digital pin as an output.
+	pinMode(ledGreenPin, OUTPUT);
+	pinMode(ledRedPin, OUTPUT);
 
 	// Switch LED Pin
 	pinMode(switchLedPin, OUTPUT);
 
 	// Switch Button Pin
-	pinMode(switchPin, INPUT);
+	pinMode(switchPin, INPUT_PULLUP);
 
 	// Pump pin
 	pinMode(pumpPin, OUTPUT);
+	digitalWrite(pumpPin, LOW);
 
-	Serial.begin(115200);
+	Serial.begin(9600);
 	Serial.println("Program started");
 }
 
-void loop()
-{
-
-	if (digitalRead(switchPin) == HIGH) {
+// the loop routine runs over and over again forever:
+void loop() {
+	if (digitalRead(switchPin) == LOW) {
 		isWateringMode = !isWateringMode;
 	}
-
-	/*if (isWateringMode) {
-	digitalWrite(switchLedPin, HIGH);
-	}
-	else {
-	digitalWrite(switchLedPin, LOW);
-	}*/
 
 	currentMoisture = analogRead(sensorPin);
 	Serial.println(currentMoisture, DEC);
 	ShowStatus(currentMoisture);
 
-	if (isWateringMode && (currentMoisture > wateringThreshold)) {
-		Serial.println("Watering the plant!");
-		digitalWrite(switchLedPin, HIGH);
-		analogWrite(pumpPin, 255);
-		delay(wateringLength);
-		analogWrite(pumpPin, 0);
-		digitalWrite(switchLedPin, LOW);
+	if (currentMoisture > wateringThreshold) {
+
+		if (isWateringMode) {
+			Serial.println("START: Watering the plant");
+			digitalWrite(pumpPin, HIGH);
+			delay(wateringLength);
+			digitalWrite(pumpPin, LOW);
+			Serial.println("END: Watering the plant.");
+
+			// Put some randomization here / or sleep arduino
+			int randNumber = 20;
+			int sleepTime = readDelay * randNumber;
+			Serial.print("Going to sleep for ");
+			Serial.print((int)(sleepTime / 1000), DEC);
+			Serial.println(" seconds");
+			delay(sleepTime);
+		}
+		else {
+			// Blink watering led to show that it wants to be watered.
+			bool isWateringLightOn = false;
+			for (int i = 0; i<10; i++) {
+				if (isWateringLightOn) {
+					digitalWrite(switchLedPin, HIGH);
+				}
+				else {
+					digitalWrite(switchLedPin, LOW);
+				}
+				isWateringLightOn = !isWateringLightOn;
+				delay(500);
+			}
+		}
 	}
 
 	delay(readDelay);
 }
 
-void ShowStatus(int readout) {
-	// Margins - dependable on mouisture sensor.
-	int from = 550;
-	int to = 900;
-
-	int divider = (int)((to - from) / sizeof(statusPins));
-	ResetStatus();
-
-	// Always show at least one LED on
-	// this is due to the margin sometimes being lower than the reading.
-	digitalWrite(statusPins[0], HIGH);
-
-	for (size_t i = 0; i < sizeof(statusPins); i++)
-	{
-		if (readout >(divider * i) + from) {
-			digitalWrite(statusPins[i], HIGH);
-		}
-	}
-}
-
-void ResetStatus() {
-	for (size_t i = 0; i < sizeof(statusPins); i++)
-	{
-		digitalWrite(statusPins[i], LOW);
-	}
-}
