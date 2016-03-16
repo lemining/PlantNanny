@@ -11,13 +11,13 @@ byte switchPin = 12;
 Defaults
 *****************************************/
 
-// Default watering mode (default: off)
-bool isWateringMode = false;
+// Default watering mode (default: on)
+bool isWateringMode = true;
 
 // How often to check the moisture
-int readDelay = 3000;
+int readDelay = 60000;
 // At what moisture level should we pump water (only if watering is enabled)
-int wateringThreshold = 800;
+int wateringThreshold = 500;
 
 // How many miliseconds to enable pump for
 int wateringLength = 3000;
@@ -98,17 +98,19 @@ void loop() {
 
 		if (isWateringMode) {
 			Serial.println("START: Watering the plant");
+			digitalWrite(switchLedPin, LOW);
 			digitalWrite(pumpPin, HIGH);
 			delay(wateringLength);
+			digitalWrite(switchLedPin, HIGH);
 			digitalWrite(pumpPin, LOW);
 			Serial.println("END: Watering the plant.");
 
 			// Put some randomization here / or sleep arduino
-			int randNumber = 20;
+			int randNumber = 1000;
 			int sleepTime = readDelay * randNumber;
 			Serial.print("Going to sleep for ");
 			Serial.print((int)(sleepTime / 1000), DEC);
-			Serial.println(" seconds");
+			Serial.println(" seconds"); 
 			delay(sleepTime);
 		}
 		else {
