@@ -4,11 +4,13 @@ byte ledRedPin = 11;
 byte pumpPin = 2;
 byte sensorPin = A0;
 
+byte coasterPin = A5;
+
 byte switchLedPin = 13;
 byte switchPin = 12;
 
 /*****************************************
-Defaults
+ Defaults
 *****************************************/
 
 // Default watering mode (default: false)
@@ -16,33 +18,58 @@ bool isWateringMode = false;
 
 // How often to check the moisture
 int readDelay = 60000;
+
 // At what moisture level should we pump water (only if watering is enabled)
-int wateringThreshold = 500;
+int wateringThreshold = 550;
 
 // How many miliseconds to enable pump for
-int wateringLength = 3000;
+int wateringLength = 5000;
 
 
 /*****************************************
-Variables
+ Variables
 *****************************************/
-int currentMoisture = 0;
+int currentSoilMoisture = 0;
+bool isWaterInCoaster = 0;
 
-int ConvertToLinearRange(int min, int max, int current, bool isInverted = false, int maxNumber = 255) {
-	float y = ((float)maxNumber / (float)max) * (float)current + (float)min;
-	if (!isInverted) {
-		return (int)y;
+/*****************************************
+ Functions
+*****************************************/
+
+int ConvertToLinearRange(int current, bool isInverted = false) {
+	// Margins - dependable on mouisture sensor.
+	int ledMaximum = 255;
+
+	int lowerLevel = 400;
+	int highLevel = wateringThreshold;
+
+	if (current < lowerLevel) {
+		current = lowerLevel + 1;
 	}
-	return max - (int)y;
+
+	if (current > highLevel) {
+		current = highLevel - 1;
+	}
+
+	int actual = current - lowerLevel;
+	int upperLimit = highLevel - lowerLevel;
+
+	float percent = (float)actual / (float)upperLimit;
+	int number = (int)((float)percent * (float)ledMaximum);
+
+	if (isInverted) {
+		return ledMaximum - number;
+	}
+	else {
+		return number;
+	}
+
+	return (percent * (float)ledMaximum);
 }
 
 void ShowStatus(int readout) {
-	// Margins - dependable on mouisture sensor.
-	int from = 0;
-	int to = 1024;
-
-	byte red = (byte)ConvertToLinearRange(from, to, readout);
-	byte green = (byte)ConvertToLinearRange(from, to, readout, true);
+	byte red = (byte)ConvertToLinearRange(readout);
+	byte green = (byte)ConvertToLinearRange(readout, true);
 
 	Serial.print("G:");
 	Serial.print(green);
@@ -50,7 +77,6 @@ void ShowStatus(int readout) {
 	Serial.print(red);
 	Serial.print(" V:");
 	Serial.println(readout);
-
 
 	analogWrite(ledGreenPin, green);
 	analogWrite(ledRedPin, red);
@@ -76,6 +102,9 @@ void setup() {
 	// Switch Button Pin
 	pinMode(switchPin, INPUT_PULLUP);
 
+	// Coaster Pin
+	pinMode(coasterPin, INPUT_PULLUP);
+
 	// Pump pin
 	pinMode(pumpPin, OUTPUT);
 	digitalWrite(pumpPin, LOW);
@@ -85,8 +114,8 @@ void setup() {
 
 	// If not in watering mode - make the reading quite frequent
 	if (!isWateringMode) {
-		Serial.println("INFO: Changing readDelay to 1 second");
-		readDelay = 1000;
+		Serial.println("INFO: Changing readDelay to 2 second");
+		readDelay = 2000;
 	}
 }
 
@@ -96,12 +125,25 @@ void loop() {
 		isWateringMode = !isWateringMode;
 	}
 
-	currentMoisture = analogRead(sensorPin);
-	Serial.println(currentMoisture, DEC);
-	ShowStatus(currentMoisture);
+	unsigned long time = millis();
+	//prints time since program started
+	Serial.println(time);
 
-	if (currentMoisture > wateringThreshold) {
+	currentSoilMoisture = analogRead(sensorPin);
+	isWaterInCoaster = !digitalRead(coasterPin);
+	Serial.println(currentSoilMoisture, DEC);
+	ShowStatus(currentSoilMoisture);
 
+	if (isWaterInCoaster) {
+		// Still water in the coaster
+		Serial.println("Water in the coaster detected.");
+	}
+	else {
+		Serial.println("Coaster is dry.");
+	}
+
+	if (!isWaterInCoaster && currentSoilMoisture > wateringThreshold)
+	{
 		if (isWateringMode) {
 			Serial.println("START: Watering the plant");
 			digitalWrite(switchLedPin, LOW);
@@ -112,19 +154,20 @@ void loop() {
 			Serial.println("END: Watering the plant.");
 
 			// Put some randomization here / or sleep arduino
-			int randNumber = 100;
-			int sleepTime = readDelay * randNumber;
+			int randNumber = 10;
+			unsigned int sleepTime = readDelay * randNumber;
 			Serial.print("Going to sleep for ");
 			Serial.print((int)(sleepTime / 1000), DEC);
-			Serial.println(" seconds x 3"); 
+
+			//TODO make this nicer.
+			Serial.println(" seconds x 3");
 			delay(sleepTime);
-			delay(sleepTime);
-			delay(sleepTime);
-		}
-		else {
+
+		} else {
+
 			// Blink watering led to show that it wants to be watered.
 			bool isWateringLightOn = false;
-			for (int i = 0; i<10; i++) {
+			for (int i = 0; i < 10; i++) {
 				if (isWateringLightOn) {
 					digitalWrite(switchLedPin, HIGH);
 				}
